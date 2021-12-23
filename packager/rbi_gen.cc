@@ -151,19 +151,24 @@ private:
     const UnorderedSet<core::ClassOrModuleRef> &pkgNamespaces;
     core::ClassOrModuleRef flatfileRecord;
     core::ClassOrModuleRef flatfileXMLNode;
-    UnorderedSet<core::SymbolRef> emittedSymbols;
     // package => blame, for debugging
     UnorderedMap<core::ClassOrModuleRef, core::SymbolRef> referencedPackages;
     UnorderedSet<core::FileRef> referencedRBIs;
+    // Symbols that we may need to emit. If the value is 'false', we need a stub. If 'true', the
+    // symbol will be emitted as a full symbol.
+    UnorderedMap<core::SymbolRef, bool> maybeToEmit;
     vector<core::SymbolRef> toEmit;
-    void maybeEmit(core::SymbolRef symbol) {
+    void maybeEmit(core::SymbolRef symbol, bool asStub) {
         if (symbol.isClassOrModule() && symbol.asClassOrModuleRef().data(gs)->isSingletonClass(gs)) {
-            maybeEmit(symbol.asClassOrModuleRef().data(gs)->attachedClass(gs));
+            maybeEmit(symbol.asClassOrModuleRef().data(gs)->attachedClass(gs), asStub);
             return;
         }
-        if (!emittedSymbols.contains(symbol) && isInPackage(symbol, symbol)) {
-            emittedSymbols.insert(symbol);
-            toEmit.emplace_back(symbol);
+
+        if ((!maybeToEmit.contains(symbol) || !maybeToEmit[symbol]) && isInPackage(symbol, symbol)) {
+            maybeToEmit[symbol] = !asStub;
+            if (!asStub) {
+                toEmit.emplace_back(symbol);
+            }
         }
     }
 
@@ -225,11 +230,11 @@ private:
         return true;
     }
 
-    string showType(const core::TypePtr &type) {
+    string showType(const core::TypePtr &type, bool asStub) {
         if (type == nullptr) {
             return "";
         }
-        enqueueSymbolsInType(type);
+        enqueueSymbolsInType(type, asStub);
         return type.show(gs);
     }
 
@@ -263,7 +268,7 @@ private:
             retType = getResultType(gs, method.data(gs)->resultType, method, receiver, constraint);
         }
         string methodReturnType =
-            (retType == core::Types::void_()) ? "void" : absl::StrCat("returns(", showType(retType), ")");
+            (retType == core::Types::void_()) ? "void" : absl::StrCat("returns(", showType(retType, false), ")");
         vector<string> typeAndArgNames;
         vector<string> typeArguments;
 
@@ -289,7 +294,7 @@ private:
             // Don't display synthetic arguments (like blk).
             if (!argSym.isSyntheticBlockArgument()) {
                 auto argType = getResultType(gs, argSym.type, method, receiver, constraint);
-                typeAndArgNames.emplace_back(absl::StrCat(safeArgumentName(argSym), ": ", showType(argType)));
+                typeAndArgNames.emplace_back(absl::StrCat(safeArgumentName(argSym), ": ", showType(argType, true)));
             }
         }
 
@@ -414,27 +419,27 @@ private:
         return result;
     }
 
-    void enqueueSymbolsInType(const core::TypePtr &type) {
+    void enqueueSymbolsInType(const core::TypePtr &type, bool asStub) {
         if (type == nullptr) {
             return;
         }
         switch (type.tag()) {
             case core::TypePtr::Tag::AliasType: {
                 const auto &alias = core::cast_type_nonnull<core::AliasType>(type);
-                maybeEmit(alias.symbol);
+                maybeEmit(alias.symbol, asStub);
                 break;
             }
             case core::TypePtr::Tag::AndType: {
                 const auto &andType = core::cast_type_nonnull<core::AndType>(type);
-                enqueueSymbolsInType(andType.left);
-                enqueueSymbolsInType(andType.right);
+                enqueueSymbolsInType(andType.left, asStub);
+                enqueueSymbolsInType(andType.right, asStub);
                 break;
             }
             case core::TypePtr::Tag::AppliedType: {
                 const auto &applied = core::cast_type_nonnull<core::AppliedType>(type);
-                maybeEmit(applied.klass);
+                maybeEmit(applied.klass, asStub);
                 for (auto &targ : applied.targs) {
-                    enqueueSymbolsInType(targ);
+                    enqueueSymbolsInType(targ, asStub);
                 }
                 break;
             }
@@ -443,7 +448,7 @@ private:
             }
             case core::TypePtr::Tag::ClassType: {
                 const auto &classType = core::cast_type_nonnull<core::ClassType>(type);
-                maybeEmit(classType.symbol);
+                maybeEmit(classType.symbol, asStub);
                 break;
             }
             case core::TypePtr::Tag::LiteralType: {
@@ -452,13 +457,13 @@ private:
             }
             case core::TypePtr::Tag::MetaType: {
                 const auto &metaType = core::cast_type_nonnull<core::MetaType>(type);
-                enqueueSymbolsInType(metaType.wrapped);
+                enqueueSymbolsInType(metaType.wrapped, asStub);
                 break;
             }
             case core::TypePtr::Tag::OrType: {
                 const auto &orType = core::cast_type_nonnull<core::OrType>(type);
-                enqueueSymbolsInType(orType.left);
-                enqueueSymbolsInType(orType.right);
+                enqueueSymbolsInType(orType.left, asStub);
+                enqueueSymbolsInType(orType.right, asStub);
                 break;
             }
             case core::TypePtr::Tag::SelfType: {
@@ -466,23 +471,23 @@ private:
             }
             case core::TypePtr::Tag::SelfTypeParam: {
                 const auto &selfTypeParam = core::cast_type_nonnull<core::SelfTypeParam>(type);
-                maybeEmit(selfTypeParam.definition);
+                maybeEmit(selfTypeParam.definition, asStub);
                 break;
             }
             case core::TypePtr::Tag::ShapeType: {
                 const auto &shapeType = core::cast_type_nonnull<core::ShapeType>(type);
                 for (const auto &key : shapeType.keys) {
-                    enqueueSymbolsInType(key);
+                    enqueueSymbolsInType(key, asStub);
                 }
                 for (const auto &value : shapeType.values) {
-                    enqueueSymbolsInType(value);
+                    enqueueSymbolsInType(value, asStub);
                 }
                 break;
             }
             case core::TypePtr::Tag::TupleType: {
                 const auto &tupleType = core::cast_type_nonnull<core::TupleType>(type);
                 for (const auto &elem : tupleType.elems) {
-                    enqueueSymbolsInType(elem);
+                    enqueueSymbolsInType(elem, asStub);
                 }
                 break;
             }
@@ -491,10 +496,10 @@ private:
             }
             case core::TypePtr::Tag::UnresolvedAppliedType: {
                 const auto &unresolvedAppliedType = core::cast_type_nonnull<core::UnresolvedAppliedType>(type);
-                maybeEmit(unresolvedAppliedType.klass);
-                maybeEmit(unresolvedAppliedType.symbol);
+                maybeEmit(unresolvedAppliedType.klass, asStub);
+                maybeEmit(unresolvedAppliedType.symbol, asStub);
                 for (const auto &targ : unresolvedAppliedType.targs) {
-                    enqueueSymbolsInType(targ);
+                    enqueueSymbolsInType(targ, asStub);
                 }
                 break;
             }
@@ -517,7 +522,7 @@ private:
     string showVariance(core::TypeMemberRef tm) {
         if (tm.data(gs)->isFixed()) {
             auto &lambdaParam = core::cast_type_nonnull<core::LambdaParam>(tm.data(gs)->resultType);
-            return absl::StrCat("fixed: ", showType(lambdaParam.upperBound));
+            return absl::StrCat("fixed: ", showType(lambdaParam.upperBound, true));
         }
 
         switch (tm.data(gs)->variance()) {
@@ -577,10 +582,10 @@ private:
             return absl::StrCat("T.let(T.unsafe(nil), ", core::Types::untypedUntracked().show(gs), ")");
         } else if (core::isa_type<core::AliasType>(type)) {
             auto alias = core::cast_type_nonnull<core::AliasType>(type);
-            maybeEmit(alias.symbol);
+            maybeEmit(alias.symbol, false);
             return alias.symbol.show(gs);
         } else {
-            return absl::StrCat("T.let(T.unsafe(nil), ", showType(type), ")");
+            return absl::StrCat("T.let(T.unsafe(nil), ", showType(type, false), ")");
         }
     }
 
@@ -595,8 +600,8 @@ private:
 
     void emitProp(core::NameRef name, const core::TypePtr &type, bool isConst, bool hasDefault) {
         string_view propType = isConst ? "const"sv : "prop"sv;
-        out.println("{} :{}, {}{}", propType, name.show(gs), showType(type),
-                    hasDefault ? absl::StrCat(", default: T.let(T.unsafe(nil), ", showType(type), ")") : "");
+        out.println("{} :{}, {}{}", propType, name.show(gs), showType(type, false),
+                    hasDefault ? absl::StrCat(", default: T.let(T.unsafe(nil), ", showType(type, false), ")") : "");
     }
 
     void removePropField(vector<core::FieldRef> &fields, core::NameRef name) {
@@ -700,7 +705,7 @@ private:
     }
 
     void emit(core::ClassOrModuleRef klass) {
-        if (!isInPackage(klass, klass) || !emittedSymbols.contains(klass)) {
+        if (!isInPackage(klass, klass)) {
             // We don't emit class definitions for items defined in other packages.
             Exception::raise("Invalid klass");
         }
@@ -727,7 +732,7 @@ private:
         if (klass.data(gs)->superClass().exists()) {
             auto superClass = klass.data(gs)->superClass();
             if (superClass != core::Symbols::Sorbet_Private_Static_ImplicitModuleSuperClass()) {
-                maybeEmit(superClass);
+                maybeEmit(superClass, false);
                 superClassString = absl::StrCat(" < ", superClass.show(gs));
             }
         }
@@ -757,7 +762,7 @@ private:
                 auto isSingleton = mixin.data(gs)->isSingletonClass(gs);
                 auto keyword = isSingleton ? "extend"sv : "include"sv;
                 out.println("{} {}", keyword, mixin.show(gs));
-                maybeEmit(mixin);
+                maybeEmit(mixin, false);
             }
 
             // Type members
@@ -788,7 +793,7 @@ private:
                             pendingEnumValues.emplace_back(memberKlass);
                         } else {
                             // Emit later.
-                            maybeEmit(member);
+                            maybeEmit(member, false);
                         }
                         break;
                     }
@@ -817,7 +822,7 @@ private:
                             if (absl::StartsWith(field.data(gs)->name.show(gs), "@@")) {
                                 emit(field, true);
                             } else {
-                                maybeEmit(field);
+                                maybeEmit(field, false);
                             }
                         }
                         break;
@@ -891,7 +896,7 @@ private:
                 // Mixins (include/extend)
                 for (auto mixin : singleton.data(gs)->mixins()) {
                     out.println("extend {}", mixin.show(gs));
-                    maybeEmit(mixin);
+                    maybeEmit(mixin, false);
                 }
 
                 // Type templates
@@ -912,7 +917,7 @@ private:
                                 // to subpackages in the .rbi.
                                 continue;
                             }
-                            maybeEmit(member);
+                            maybeEmit(member, false);
                             break;
                         }
                         case core::SymbolRef::Kind::TypeMember: {
@@ -939,7 +944,7 @@ private:
                                 if (absl::StartsWith(field.data(gs)->name.show(gs), "@@")) {
                                     emit(field, true);
                                 } else {
-                                    maybeEmit(field);
+                                    maybeEmit(field, false);
                                 }
                             }
                             break;
@@ -965,14 +970,9 @@ private:
 
     // Emits method and declares fields in its body.
     void emit(core::MethodRef method, vector<core::FieldRef> &fields) {
-        if (emittedSymbols.contains(method)) {
-            return;
-        }
-
         if (method.data(gs)->name == core::Names::staticInit()) {
             return;
         }
-        emittedSymbols.insert(method);
 
         // Note: We have to emit private methods because `include`ing a module with private methods will make those
         // methods available.
@@ -1061,7 +1061,7 @@ private:
             }
 
             if (field.data(gs)->flags.isStaticFieldTypeAlias) {
-                out.println("{} = T.type_alias {{{}}}", field.show(gs), showType(resultType));
+                out.println("{} = T.type_alias {{{}}}", field.show(gs), showType(resultType, false));
             } else if (isCVar) {
                 out.println("{} = {}", field.data(gs)->name.show(gs), typeDeclaration(resultType));
             } else {
@@ -1073,11 +1073,6 @@ private:
     }
 
     void emit(core::TypeMemberRef tm) {
-        if (emittedSymbols.contains(tm)) {
-            return;
-        }
-        emittedSymbols.insert(tm);
-
         // cerr << "Emitting " << tm.show(gs) << "\n";
 
         if (tm.data(gs)->name == core::Names::Constants::AttachedClass()) {
@@ -1092,7 +1087,19 @@ private:
         }
     }
 
-    void emitLoop() {
+    void emitStub(core::SymbolRef symbol) {
+        if (!symbol.isClassOrModule()) {
+            Exception::raise("??? {}", symbol.show(gs));
+        }
+        auto klass = symbol.asClassOrModuleRef();
+        if (klass.data(gs)->isClassOrModuleClass()) {
+            out.println("class {}; end", klass.show(gs));
+        } else {
+            out.println("module {}; end", klass.show(gs));
+        }
+    }
+
+    void emitLoop(UnorderedSet<core::SymbolRef> &emittedStubs) {
         vector<core::FieldRef> empty;
         while (!toEmit.empty()) {
             auto symbol = toEmit.back();
@@ -1111,6 +1118,13 @@ private:
                     break;
                 case core::SymbolRef::Kind::TypeArgument:
                     break;
+            }
+        }
+
+        for (auto [sym, full] : maybeToEmit) {
+            if (!full && !emittedStubs.contains(sym)) {
+                emitStub(sym);
+                emittedStubs.insert(sym);
             }
         }
     }
@@ -1163,28 +1177,31 @@ public:
             }
         }
 
+        UnorderedSet<core::SymbolRef> emittedStubs;
         if (!exports.empty()) {
             for (auto &exportSymbol : exports) {
-                maybeEmit(exportSymbol);
+                maybeEmit(exportSymbol, false);
             }
 
-            emitLoop();
+            emitLoop(emittedStubs);
 
             output.rbi = "# typed: true\n\n" + out.toString();
             output.rbiPackageDependencies = fmt::format(
                 "{{\"packageRefs\":[{}], \"rbiRefs\":[{}]}}",
                 absl::StrJoin(referencedPackages.begin(), referencedPackages.end(), ",", QuoteStringNameFormatter(gs)),
                 absl::StrJoin(referencedRBIs.begin(), referencedRBIs.end(), ",", QuoteStringFileFormatter(gs)));
+
+            // maybe get list of stub modules, later emit or not? set aside package/rbi refs?
         }
 
         // N.B.: We don't need to generate this in the same pass. Test code only relies on exported symbols from regular
         // code...
         if (!testExports.empty()) {
             for (auto exportSymbol : testExports) {
-                maybeEmit(exportSymbol);
+                maybeEmit(exportSymbol, false);
             }
 
-            emitLoop();
+            emitLoop(emittedStubs);
 
             auto rbiText = out.toString();
             if (!rbiText.empty()) {

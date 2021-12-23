@@ -41,6 +41,12 @@ module RBIGen::Private
   class PrivateClassNotReferenced; end
 
   class PrivateClassForTests; end
+
+  # Should _not_ be pulled in
+  class PrivateClassOnlyReferencedByArg; end
+
+  class PrivateClassSuperclass; end
+  module PrivateClassMixin; end
 end
 
 module RBIGen::DirectlyExported
@@ -48,12 +54,18 @@ module RBIGen::DirectlyExported
 end
 
 module RBIGen::Public
-  class RefersToPrivateTypes
+  class RefersToPrivateTypes < RBIGen::Private::PrivateClassSuperclass
     extend T::Sig
 
-    sig {params(a: RBIGen::Private::PrivateClass).void}
-    def method(a)
+    extend RBIGen::Private::PrivateClassMixin
+
+    sig {returns(RBIGen::Private::PrivateClass)}
+    def method
+      RBIGen::Private::PrivateClass.new
     end
+
+    sig {params(a: RBIGen::Private::PrivateClassOnlyReferencedByArg).void}
+    def method_2(a); end
 
     ClassAlias = RBIGen::Private::PrivateClassPulledInByClassAlias
   end
@@ -237,8 +249,10 @@ module RBIGen::Public
       @unless = T.let("", String)
     end
 
-    sig {params(a: RBIGen::Private::PrivateClassPulledInByPrivateMethod).void}
-    private def my_method(a); end
+    sig {returns(RBIGen::Private::PrivateClassPulledInByPrivateMethod)}
+    private def my_method()
+      RBIGen::Private::PrivateClassPulledInByPrivateMethod.new
+    end
 
     sig {returns(T::Array[String])}
     def returns_generic_type
@@ -295,7 +309,7 @@ module RBIGen::Public
     @static_field = T.let(10, Integer)
     class << self
       extend Forwardable
-      
+
       def_delegators :@static_field, :method1, :method2
       def_delegator :@static_field, :method3
     end

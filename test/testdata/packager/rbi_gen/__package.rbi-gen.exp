@@ -22,8 +22,8 @@ module RBIGen::Public::VariousMethods
   def if; end
   sig {params(ifArg: Integer).returns(Integer)}
   def if=(ifArg); end
-  sig {params(a: RBIGen::Private::PrivateClassPulledInByPrivateMethod).void}
-  private def my_method(a); end
+  sig {returns(RBIGen::Private::PrivateClassPulledInByPrivateMethod)}
+  private def my_method; end
   sig {returns(T.any(String, [T.deprecated_enum([:D]), Integer], Integer))}
   def returns_any_with_literals; end
   sig {returns(T::Array[String])}
@@ -63,15 +63,22 @@ class RBIGen::Public::SealedClass < Object
   sealed!
   extend T::Helpers
 end
-class RBIGen::Public::RefersToPrivateTypes < Object
-  sig {params(a: RBIGen::Private::PrivateClass).void}
-  def method(a); end
+class RBIGen::Public::RefersToPrivateTypes < RBIGen::Private::PrivateClassSuperclass
+  sig {returns(RBIGen::Private::PrivateClass)}
+  def method; end
+  sig {params(a: RBIGen::Private::PrivateClassOnlyReferencedByArg).void}
+  def method_2(a); end
+  extend RBIGen::Private::PrivateClassMixin
   extend T::Sig
+end
+module RBIGen::Private::PrivateClassMixin
 end
 class RBIGen::Private::PrivateClass < Object
 end
 RBIGen::Public::RefersToPrivateTypes::ClassAlias = RBIGen::Private::PrivateClassPulledInByClassAlias
 class RBIGen::Private::PrivateClassPulledInByClassAlias < Object
+end
+class RBIGen::Private::PrivateClassSuperclass < Object
 end
 class RBIGen::Public::MyStruct < T::Struct
   prop :foo, Integer
@@ -248,6 +255,7 @@ class RBIGen::Public::AbstractAndInterfaceImplementor < RBIGen::Public::Abstract
   sig {override.returns(String)}
   def interface_method; end
 end
+class RBIGen::Private::PrivateClassOnlyReferencedByArg; end
 
 # test/testdata/packager/rbi_gen/RBIGen_Package.test.rbi
 # typed: true
