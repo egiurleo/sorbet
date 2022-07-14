@@ -1146,12 +1146,11 @@ private:
         auto *id = ast::cast_tree<ast::ConstantLit>(block->body);
 
         if(id == nullptr) {
-          auto *send = ast::cast_tree<ast::Send>(block->body);
-
-          auto *recv = ast::cast_tree<ast::ConstantLit>(send->recv);
-          if(recv != nullptr && recv->symbol.isClassOrModule() && recv->symbol.showFullName(gs) == "::T") {
+          if (isTClassOf(block->body)) {
 
           }
+
+
 
         //   send->numPosArgs() == 1;
         //   send->numKwArgs() == 0;
@@ -1914,6 +1913,20 @@ class ResolveTypeMembersAndFieldsWalk {
     static bool isT(const ast::ExpressionPtr &expr) {
         auto *tMod = ast::cast_tree<ast::ConstantLit>(expr);
         return tMod && tMod->symbol == core::Symbols::T();
+    }
+
+    static bool isTClassOf(const ast::ExpressionPtr &expr) {
+        auto *send = ast::cast_tree<ast::Send>(block->body);
+
+        if(send == nullptr) {
+            return false;
+        }
+
+        if(!isT(send->recv)) {
+            return false;
+        }
+
+        return send->fun == core::Names::classOf();
     }
 
     static bool isTodo(const core::TypePtr &type) {
