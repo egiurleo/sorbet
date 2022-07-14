@@ -1802,16 +1802,14 @@ void ClassOrModule::recordRequiredAncestorInternal(GlobalState &gs, ClassOrModul
     // Do not require the same ancestor twice
     auto &elems = (cast_type<TupleType>(ancestors.data(gs)->resultType))->elems;
     bool alreadyRecorded = absl::c_any_of(elems, [ancestor](auto elem) {
-        ENFORCE(isa_type<ClassType>(elem), "Something in requiredAncestors that's not a ClassType");
-        return cast_type_nonnull<ClassType>(elem).symbol == ancestor.symbol;
+        return elem == ancestor.type;
     });
     if (alreadyRecorded) {
         return;
     }
 
     // Store the RequiredAncestor.symbol
-    auto tSymbol = core::make_type<ClassType>(ancestor.symbol);
-    (cast_type<TupleType>(ancestors.data(gs)->resultType))->elems.emplace_back(tSymbol);
+    (cast_type<TupleType>(ancestors.data(gs)->resultType))->elems.emplace_back(ancestor.type);
 
     // Store the RequiredAncestor.origin
     auto tOrigin = core::make_type<ClassType>(ancestor.origin);
@@ -1841,9 +1839,8 @@ vector<ClassOrModule::RequiredAncestor> ClassOrModule::readRequiredAncestorsInte
         ENFORCE(isa_type<ClassType>(tOrigins->elems[index]), "Bad origin in requiredAncestors");
         ENFORCE(index < data->locs().size(), "Missing loc in requiredAncestors");
         auto &origin = cast_type_nonnull<ClassType>(tOrigins->elems[index]).symbol;
-        auto &symbol = cast_type_nonnull<ClassType>(elem).symbol;
         auto &loc = data->locs()[index];
-        res.emplace_back(origin, symbol, loc);
+        res.emplace_back(origin, elem, loc);
         index++;
     }
 
@@ -1851,8 +1848,8 @@ vector<ClassOrModule::RequiredAncestor> ClassOrModule::readRequiredAncestorsInte
 }
 
 // Record a required ancestor for this class of module
-void ClassOrModule::recordRequiredAncestor(GlobalState &gs, ClassOrModuleRef ancestor, Loc loc) {
-    RequiredAncestor req = {this->ref(gs), ancestor, loc};
+void ClassOrModule::recordRequiredAncestor(GlobalState &gs, TypePtr type, Loc loc) {
+    RequiredAncestor req = {this->ref(gs), type, loc};
     recordRequiredAncestorInternal(gs, req, Names::requiredAncestors());
 }
 
@@ -1871,8 +1868,19 @@ ClassOrModule::requiredAncestorsTransitiveInternal(GlobalState &gs, std::vector<
 
     for (auto ancst : requiredAncestors(gs)) {
         recordRequiredAncestorInternal(gs, ancst, Names::requiredAncestorsLin());
-        for (auto sancst : ancst.symbol.data(gs)->requiredAncestorsTransitiveInternal(gs, seen)) {
-            if (sancst.symbol != this->ref(gs)) {
+        if(!core::isa_type<core::ClassType>(ancst.type)) {
+            continue; // TODO: assert?
+        }
+
+        auto classType = core::cast_type_nonnull<core::ClassType>(ancst.type);
+
+        for (auto sancst : classType.symbol.data(gs)->requiredAncestorsTransitiveInternal(gs, seen)) {
+            if(!core::isa_type<core::ClassType>(sancst.type)) {
+                continue; // TODO: assert?
+            }
+
+            auto sancstClassType = core::cast_type_nonnull<core::ClassType>(sancst.type);
+            if (sancstClassType.symbol != this->ref(gs)) {
                 recordRequiredAncestorInternal(gs, sancst, Names::requiredAncestorsLin());
             }
         }
@@ -1881,7 +1889,12 @@ ClassOrModule::requiredAncestorsTransitiveInternal(GlobalState &gs, std::vector<
     auto parent = superClass();
     if (parent.exists()) {
         for (auto ancst : parent.data(gs)->requiredAncestorsTransitiveInternal(gs, seen)) {
-            if (ancst.symbol != this->ref(gs)) {
+            if(!core::isa_type<core::ClassType>(ancst.type)) {
+                continue; // TODO: assert?
+            }
+
+            auto classType = core::cast_type_nonnull<core::ClassType>(ancst.type);
+            if (classType.symbol != this->ref(gs)) {
                 recordRequiredAncestorInternal(gs, ancst, Names::requiredAncestorsLin());
             }
         }
@@ -1889,7 +1902,12 @@ ClassOrModule::requiredAncestorsTransitiveInternal(GlobalState &gs, std::vector<
 
     for (auto mixin : mixins()) {
         for (auto ancst : mixin.data(gs)->requiredAncestors(gs)) {
-            if (ancst.symbol != this->ref(gs)) {
+            if(!core::isa_type<core::ClassType>(ancst.type)) {
+                continue; // TODO: assert?
+            }
+
+            auto classType = core::cast_type_nonnull<core::ClassType>(ancst.type);
+            if (classType.symbol != this->ref(gs)) {
                 recordRequiredAncestorInternal(gs, ancst, Names::requiredAncestorsLin());
             }
         }

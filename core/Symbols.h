@@ -514,16 +514,16 @@ public:
     bool hasSingleSealedSubclass(const GlobalState &ctx) const;
 
     // Record a required ancestor for this class of module
-    void recordRequiredAncestor(GlobalState &gs, ClassOrModuleRef ancestor, Loc loc);
+    void recordRequiredAncestor(GlobalState &gs, TypePtr type, Loc loc);
 
     // Associate a required ancestor with the loc it's required at
     struct RequiredAncestor {
         ClassOrModuleRef origin; // The class or module that required `symbol`
-        ClassOrModuleRef symbol; // The symbol required
+        TypePtr type;            // The type required
         Loc loc;                 // The location it was required at
 
-        RequiredAncestor(ClassOrModuleRef origin, ClassOrModuleRef symbol, Loc loc)
-            : origin(origin), symbol(symbol), loc(loc) {}
+        RequiredAncestor(ClassOrModuleRef origin, TypePtr type, Loc loc)
+            : origin(origin), type(type), loc(loc) {}
     };
 
     void computeRequiredAncestorLinearization(GlobalState &gs);

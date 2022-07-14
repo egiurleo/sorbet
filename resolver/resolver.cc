@@ -1161,7 +1161,8 @@ private:
         }
 
         if constexpr (isMutableStateType) {
-            owner.data(gs)->recordRequiredAncestor(gs, id->symbol.asClassOrModuleRef(), blockLoc);
+            auto tSymbol = core::make_type<core::ClassType>(id->symbol.asClassOrModuleRef());
+            owner.data(gs)->recordRequiredAncestor(gs, tSymbol, blockLoc);
         }
     }
 

@@ -591,10 +591,15 @@ void validateUselessRequiredAncestors(core::Context ctx, const core::ClassOrModu
     auto data = sym.data(ctx);
 
     for (auto req : data->requiredAncestors(ctx)) {
-        if (data->derivesFrom(ctx, req.symbol)) {
+        if(!core::isa_type<core::ClassType>(req.type)) {
+            continue; // TODO: assert?
+        }
+
+        auto classType = core::cast_type_nonnull<core::ClassType>(req.type);
+        if (data->derivesFrom(ctx, classType.symbol)) {
             if (auto e = ctx.state.beginError(req.loc, core::errors::Resolver::UselessRequiredAncestor)) {
-                e.setHeader("`{}` is already {} by `{}`", req.symbol.show(ctx),
-                            req.symbol.data(ctx)->isModule() ? "included" : "inherited", sym.show(ctx));
+                e.setHeader("`{}` is already {} by `{}`", classType.symbol.show(ctx),
+                            classType.symbol.data(ctx)->isModule() ? "included" : "inherited", sym.show(ctx));
             }
         }
     }
@@ -606,10 +611,14 @@ void validateUnsatisfiedRequiredAncestors(core::Context ctx, const core::ClassOr
         return;
     }
     for (auto req : data->requiredAncestorsTransitive(ctx)) {
-        if (sym != req.symbol && !data->derivesFrom(ctx, req.symbol)) {
+        if(!core::isa_type<core::ClassType>(req.type)) {
+            continue; // TODO: assert?
+        }
+        auto classType = core::cast_type_nonnull<core::ClassType>(req.type);
+        if (sym != classType.symbol && !data->derivesFrom(ctx, classType.symbol)) {
             if (auto e = ctx.state.beginError(data->loc(), core::errors::Resolver::UnsatisfiedRequiredAncestor)) {
                 e.setHeader("`{}` must {} `{}` (required by `{}`)", sym.show(ctx),
-                            req.symbol.data(ctx)->isModule() ? "include" : "inherit", req.symbol.show(ctx),
+                            classType.symbol.data(ctx)->isModule() ? "include" : "inherit", classType.symbol.show(ctx),
                             req.origin.show(ctx));
                 e.addErrorLine(req.loc, "required by `{}` here", req.origin.show(ctx));
             }
@@ -622,28 +631,36 @@ void validateUnsatisfiableRequiredAncestors(core::Context ctx, const core::Class
 
     vector<core::ClassOrModule::RequiredAncestor> requiredClasses;
     for (auto ancst : data->requiredAncestorsTransitive(ctx)) {
-        if (ancst.symbol.data(ctx)->isClass()) {
+        if(!core::isa_type<core::ClassType>(ancst.type)) {
+            continue; // TODO: assert?
+        }
+        auto classType = core::cast_type_nonnull<core::ClassType>(ancst.type);
+        if (classType.symbol.data(ctx)->isClass()) {
             requiredClasses.emplace_back(ancst);
         }
 
-        if (ancst.symbol.data(ctx)->typeArity(ctx) > 0) {
+        if (classType.symbol.data(ctx)->typeArity(ctx) > 0) {
             if (auto e = ctx.state.beginError(data->loc(), core::errors::Resolver::UnsatisfiableRequiredAncestor)) {
                 e.setHeader("`{}` can't require generic ancestor `{}` (unsupported)", sym.show(ctx),
-                            ancst.symbol.show(ctx));
-                e.addErrorLine(ancst.loc, "`{}` is required by `{}` here", ancst.symbol.show(ctx),
-                               ancst.origin.show(ctx));
+                            classType.symbol.show(ctx));
+                e.addErrorLine(ancst.loc, "`{}` is required by `{}` here", classType.symbol.show(ctx),
+                            ancst.origin.show(ctx));
             }
         }
     }
 
     if (data->isClass() && data->flags.isAbstract) {
         for (auto ancst : requiredClasses) {
-            if (!sym.data(ctx)->derivesFrom(ctx, ancst.symbol) && !ancst.symbol.data(ctx)->derivesFrom(ctx, sym)) {
+            if(!core::isa_type<core::ClassType>(ancst.type)) {
+                continue; // TODO: assert?
+            }
+            auto classType = core::cast_type_nonnull<core::ClassType>(ancst.type);
+            if (!sym.data(ctx)->derivesFrom(ctx, classType.symbol) && !classType.symbol.data(ctx)->derivesFrom(ctx, sym)) {
                 if (auto e = ctx.state.beginError(data->loc(), core::errors::Resolver::UnsatisfiableRequiredAncestor)) {
                     e.setHeader("`{}` requires unrelated class `{}` making it impossible to inherit", sym.show(ctx),
-                                ancst.symbol.show(ctx));
-                    e.addErrorLine(ancst.loc, "`{}` is required by `{}` here", ancst.symbol.show(ctx),
-                                   ancst.origin.show(ctx));
+                                classType.symbol.show(ctx));
+                    e.addErrorLine(ancst.loc, "`{}` is required by `{}` here", classType.symbol.show(ctx),
+                                ancst.origin.show(ctx));
                 }
             }
         }
@@ -655,17 +672,29 @@ void validateUnsatisfiableRequiredAncestors(core::Context ctx, const core::Class
 
     for (int i = 0; i < requiredClasses.size() - 1; i++) {
         auto ra1 = requiredClasses[i];
+        if(!core::isa_type<core::ClassType>(ra1.type)) {
+            continue; // TODO: assert?
+        }
+
+        auto ra1Symbol = core::cast_type_nonnull<core::ClassType>(ra1.type).symbol;
+
         for (int j = i + 1; j < requiredClasses.size(); j++) {
             auto ra2 = requiredClasses[j];
-            if (!ra1.symbol.data(ctx)->derivesFrom(ctx, ra2.symbol) &&
-                !ra2.symbol.data(ctx)->derivesFrom(ctx, ra1.symbol)) {
+            if(!core::isa_type<core::ClassType>(ra2.type)) {
+                continue; // TODO: assert?
+            }
+
+            auto ra2Symbol = core::cast_type_nonnull<core::ClassType>(ra2.type).symbol;
+
+            if (!ra1Symbol.data(ctx)->derivesFrom(ctx, ra2Symbol) &&
+                !ra2Symbol.data(ctx)->derivesFrom(ctx, ra1Symbol)) {
                 if (auto e = ctx.state.beginError(data->loc(), core::errors::Resolver::UnsatisfiableRequiredAncestor)) {
                     e.setHeader("`{}` requires unrelated classes `{}` and `{}` making it impossible to {}",
-                                sym.show(ctx), ra1.symbol.show(ctx), ra2.symbol.show(ctx),
+                                sym.show(ctx), ra1Symbol.show(ctx), ra2Symbol.show(ctx),
                                 data->isModule() ? "include" : "inherit");
-                    e.addErrorLine(ra1.loc, "`{}` is required by `{}` here", ra1.symbol.show(ctx),
+                    e.addErrorLine(ra1.loc, "`{}` is required by `{}` here", ra1Symbol.show(ctx),
                                    ra1.origin.show(ctx));
-                    e.addErrorLine(ra2.loc, "`{}` is required by `{}` here", ra2.symbol.show(ctx),
+                    e.addErrorLine(ra2.loc, "`{}` is required by `{}` here", ra2Symbol.show(ctx),
                                    ra2.origin.show(ctx));
                 }
             }

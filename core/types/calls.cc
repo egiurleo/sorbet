@@ -715,7 +715,12 @@ DispatchResult dispatchCallSymbol(const GlobalState &gs, const DispatchArgs &arg
         // Before raising any error, we look if the method exists in all required ancestors by this symbol
         auto ancestors = symbol.data(gs)->requiredAncestorsTransitive(gs);
         for (auto ancst : ancestors) {
-            mayBeOverloaded = ancst.symbol.data(gs)->findMethodTransitive(gs, args.name);
+            if(!core::isa_type<core::ClassType>(ancst.type)) {
+                continue; // TODO: assert?
+            }
+
+            auto classType = core::cast_type_nonnull<core::ClassType>(ancst.type);
+            mayBeOverloaded = classType.symbol.data(gs)->findMethodTransitive(gs, args.name);
             if (mayBeOverloaded.exists()) {
                 break;
             }
