@@ -1144,6 +1144,9 @@ private:
 
         auto blockLoc = core::Loc(todo.file, block->body.loc());
         auto *id = ast::cast_tree<ast::ConstantLit>(block->body);
+        // If the required ancestor is a T.class_of then block->body will be an ast::Send
+        //  rather than an ast::ConstantLit, which means that id will be a nullptr.
+        // How do you take the result of T.class_of and store it as something useful?
 
         if (id == nullptr || !id->symbol.exists() || !id->symbol.isClassOrModule()) {
             if (auto e = gs.beginError(blockLoc, core::errors::Resolver::InvalidRequiredAncestor)) {
