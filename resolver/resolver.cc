@@ -1144,6 +1144,20 @@ private:
 
         auto blockLoc = core::Loc(todo.file, block->body.loc());
         auto *id = ast::cast_tree<ast::ConstantLit>(block->body);
+
+        if(id == nullptr) {
+          auto *send = ast::cast_tree<ast::Send>(block->body);
+
+          auto *recv = ast::cast_tree<ast::ConstantLit>(send->recv);
+          if(recv != nullptr && recv->symbol.isClassOrModule() && recv->symbol.showFullName(gs) == "::T") {
+
+          }
+
+        //   send->numPosArgs() == 1;
+        //   send->numKwArgs() == 0;
+        //   send->getPosArg(0);
+
+        }
         // If the required ancestor is a T.class_of then block->body will be an ast::Send
         //  rather than an ast::ConstantLit, which means that id will be a nullptr.
         // How do you take the result of T.class_of and store it as something useful?
