@@ -103,7 +103,7 @@ module T::Helpers
 
   def mixes_in_class_methods(mod, *mods); end
 
-  sig { params(block: T.proc.returns(Module)).void }
+  sig { params(block: T.proc.returns(T.untyped)).void }
   def requires_ancestor(&block); end
 end
 

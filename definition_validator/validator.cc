@@ -639,14 +639,14 @@ void validateUnsatisfiableRequiredAncestors(core::Context ctx, const core::Class
             requiredClasses.emplace_back(ancst);
         }
 
-        if (classType.symbol.data(ctx)->typeArity(ctx) > 0) {
-            if (auto e = ctx.state.beginError(data->loc(), core::errors::Resolver::UnsatisfiableRequiredAncestor)) {
-                e.setHeader("`{}` can't require generic ancestor `{}` (unsupported)", sym.show(ctx),
-                            classType.symbol.show(ctx));
-                e.addErrorLine(ancst.loc, "`{}` is required by `{}` here", classType.symbol.show(ctx),
-                            ancst.origin.show(ctx));
-            }
-        }
+        // if (classType.symbol.data(ctx)->typeArity(ctx) > 0) {
+        //     if (auto e = ctx.state.beginError(data->loc(), core::errors::Resolver::UnsatisfiableRequiredAncestor)) {
+        //         e.setHeader("`{}` can't require generic ancestor `{}` (unsupported)", sym.show(ctx),
+        //                     classType.symbol.show(ctx));
+        //         e.addErrorLine(ancst.loc, "`{}` is required by `{}` here", classType.symbol.show(ctx),
+        //                     ancst.origin.show(ctx));
+        //     }
+        // }
     }
 
     if (data->isClass() && data->flags.isAbstract) {

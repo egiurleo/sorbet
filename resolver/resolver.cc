@@ -1143,25 +1143,30 @@ private:
         ENFORCE(block->body);
 
         auto blockLoc = core::Loc(todo.file, block->body.loc());
-        auto *id = ast::cast_tree<ast::ConstantLit>(block->body);
+        core::ClassOrModuleRef symbol = core::Symbols::StubModule();
 
-        if(id == nullptr) {
-          if (isTClassOf(block->body)) {
+        if(auto *id = ast::cast_tree<ast::ConstantLit>(block->body)) {
+            if(id != nullptr && id->symbol.exists() && id->symbol.isClassOrModule()) {
+                symbol = id->symbol.asClassOrModuleRef();
+            }
+        } else if(isTClassOf(block->body)) {
+            auto *send = ast::cast_tree<ast::Send>(block->body);
 
-          }
+            ENFORCE(send);
 
-
-
-        //   send->numPosArgs() == 1;
-        //   send->numKwArgs() == 0;
-        //   send->getPosArg(0);
-
+            if(send->numPosArgs() == 1) {
+                auto arg = send->getPosArg(0).deepCopy();
+                if(auto *argClass = ast::cast_tree<ast::ConstantLit>(arg)) {
+                    if(argClass != nullptr && argClass->symbol.exists() && argClass->symbol.isClassOrModule()) {
+                        if constexpr (isMutableStateType) {
+                            symbol = argClass->symbol.asClassOrModuleRef().data(gs)->singletonClass(gs);
+                        }
+                    }
+                }
+            }
         }
-        // If the required ancestor is a T.class_of then block->body will be an ast::Send
-        //  rather than an ast::ConstantLit, which means that id will be a nullptr.
-        // How do you take the result of T.class_of and store it as something useful?
 
-        if (id == nullptr || !id->symbol.exists() || !id->symbol.isClassOrModule()) {
+        if (symbol == core::Symbols::StubModule()) {
             if (auto e = gs.beginError(blockLoc, core::errors::Resolver::InvalidRequiredAncestor)) {
                 e.setHeader("Argument to `{}` must be statically resolvable to a class or a module",
                             send->fun.show(gs));
@@ -1169,7 +1174,7 @@ private:
             return;
         }
 
-        if (id->symbol == owner) {
+        if (symbol == owner) {
             if (auto e = gs.beginError(blockLoc, core::errors::Resolver::InvalidRequiredAncestor)) {
                 e.setHeader("Must not pass yourself to `{}`", send->fun.show(gs));
             }
@@ -1177,10 +1182,30 @@ private:
         }
 
         if constexpr (isMutableStateType) {
-            auto tSymbol = core::make_type<core::ClassType>(id->symbol.asClassOrModuleRef());
+            auto tSymbol = core::make_type<core::ClassType>(symbol);
             owner.data(gs)->recordRequiredAncestor(gs, tSymbol, blockLoc);
         }
     }
+
+    static bool isTClassOf(const ast::ExpressionPtr &expr) {
+        auto *send = ast::cast_tree<ast::Send>(expr);
+
+        if(send == nullptr) {
+            return false;
+        }
+
+        if(!isT(send->recv)) {
+            return false;
+        }
+
+        return send->fun == core::Names::classOf();
+    }
+
+    static bool isT(const ast::ExpressionPtr &expr) {
+        auto *tMod = ast::cast_tree<ast::ConstantLit>(expr);
+        return tMod && tMod->symbol == core::Symbols::T();
+    }
+
 
     static void tryRegisterSealedSubclass(core::MutableContext ctx, AncestorResolutionItem &job) {
         ENFORCE(job.ancestor->symbol.exists(), "Ancestor must exist, or we can't check whether it's sealed.");
@@ -1915,19 +1940,6 @@ class ResolveTypeMembersAndFieldsWalk {
         return tMod && tMod->symbol == core::Symbols::T();
     }
 
-    static bool isTClassOf(const ast::ExpressionPtr &expr) {
-        auto *send = ast::cast_tree<ast::Send>(block->body);
-
-        if(send == nullptr) {
-            return false;
-        }
-
-        if(!isT(send->recv)) {
-            return false;
-        }
-
-        return send->fun == core::Names::classOf();
-    }
 
     static bool isTodo(const core::TypePtr &type) {
         return core::isa_type<core::ClassType>(type) &&
