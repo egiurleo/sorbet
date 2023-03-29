@@ -417,6 +417,7 @@ NameDef names[] = {
     {"fwdArgs", "<fwd-args>"},
     {"fwdKwargs", "<fwd-kwargs>"},
     {"fwdBlock", "<fwd-block>"},
+    {"fwdRestArg", "<fwd-restarg>"},
 
     // Enumerable#flat_map has special-case logic in Infer
     {"flatMap", "flat_map"},

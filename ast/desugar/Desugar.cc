@@ -666,7 +666,8 @@ ExpressionPtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) 
 
                 if (absl::c_any_of(send->args, [](auto &arg) {
                         return parser::isa_node<parser::Splat>(arg.get()) ||
-                               parser::isa_node<parser::ForwardedArgs>(arg.get());
+                               parser::isa_node<parser::ForwardedArgs>(arg.get()) ||
+                               parser::isa_node<parser::ForwardedRestArg>(arg.get());
                     })) {
                     // Build up an array that represents the keyword args for the send. When there is a Kwsplat, treat
                     // all keyword arguments as a single argument.
@@ -751,6 +752,12 @@ ExpressionPtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) 
                             block = std::move(bp->block);
                         }
                         argnodes.erase(it);
+                    }
+
+                    auto fwdRestIt = absl::c_find_if(
+                        argnodes, [](auto &arg) { return parser::isa_node<parser::ForwardedRestArg>(arg.get()); });
+                    if (fwdRestIt != argnodes.end()) {
+                        argnodes.erase(fwdRestIt);
                     }
 
                     auto hasFwdArgs = false;
